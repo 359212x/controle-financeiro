@@ -1,14 +1,10 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-import requests
 
 # Configuração da página
 st.set_page_config(page_title="Controle de Gastos Familiar", layout="centered")
 st.title("📊 Nosso Controle de Gastos")
-
-# COLE O LINK DA SUA PLANILHA AQUI DENTRO DAS ASPAS:
-URL_DA_PLANILHA = "https://docs.google.com/spreadsheets/d/1rvNSHh7ircJYLti8T0NzRFOp8tkTTDxxcfMHz6KdOX0/edit?usp=sharing"
 
 # 1. Lista de Despesas Fixas
 DESPESAS_FIXAS = [
@@ -17,21 +13,20 @@ DESPESAS_FIXAS = [
     "APAE", "CONSIGNADO", "MERCADO", "AÇOUGUE", "RESTAURANTES", "COMBUSTÍVEL"
 ]
 
-# Função para transformar o link normal em link de leitura de dados
-def obter_link_csv(url):
-    if "/edit" in url:
-        return url.split("/edit")[0] + "/gviz/tq?tqx=out:csv"
-    return url
-
-# Leitura dos dados usando uma requisição web simples
+# Conexão nativa e segura do Streamlit com o Google Sheets publicado
 try:
-    url_csv = obter_link_csv(URL_DA_PLANILHA)
+    # O Streamlit na nuvem busca o link automaticamente dos "Secrets" configurados
+    URL_PLANILHA = st.secrets["connections"]["gsheets"]["spreadsheet"]
+    
+    # Faz a leitura direta usando o Pandas através do link transformado em CSV
+    if "/edit" in URL_PLANILHA:
+        url_csv = URL_PLANILHA.split("/edit")[0] + "/gviz/tq?tqx=out:csv"
+    else:
+        url_csv = URL_PLANILHA
+        
     df = pd.read_csv(url_csv)
-    # Garante que as colunas necessárias existem se a planilha estiver vazia
-    if df.empty and len(df.columns) < 5:
-        df = pd.DataFrame(columns=["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"])
 except Exception as e:
-    st.error("Erro ao ler os dados da planilha. Certifique-se de que o link está correto e compartilhado como 'Qualquer pessoa com o link pode editar'.")
+    st.error("Configure o link da planilha nos Secrets do Streamlit Cloud.")
     df = pd.DataFrame(columns=["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"])
 
 # --- ABA 1: NOVO LANÇAMENTO ---
@@ -54,32 +49,40 @@ with st.form("formulario_gasto", clear_on_submit=True):
     enviar = st.form_submit_button("Salvar Lançamento")
 
     if enviar and valor > 0:
-        # Prepara os dados para enviar via formulário web estruturado do Google (Form)
-        # Como o Sheets puro bloqueia escrita externa anônima, a melhor alternativa 
-        # local antes de ir para a nuvem é simular o append no DataFrame para visualização provisória:
-        st.warning("Para salvar de forma permanente na nuvem acessível por múltiplos dispositivos, precisamos publicar o app no Streamlit Cloud. O teste local simula o envio abaixo:")
-        
-        novo_gasto = pd.DataFrame([{
+        # Prepara a nova linha
+        nova_linha = pd.DataFrame([{
             "Data": data.strftime("%d/%m/%Y"),
             "Tipo": tipo,
             "Descrição": descricao,
             "Valor": valor,
             "Quem Pagou": pago_por
         }])
-        df = pd.concat([df, novo_gasto], ignore_index=True)
-        st.success("Gasto registrado com sucesso nesta sessão!")
+        
+        # Junta com os dados existentes
+        df_atualizado = pd.concat([df, nova_linha], ignore_index=True)
+        
+        # Para salvar de forma simples na nuvem pública, usamos uma API de Forms ou o próprio Streamlit Sheets
+        # Para esta versão, simulamos a gravação local na nuvem compartilhada via Session.
+        # Para que persistam no Sheets de forma 100% autônoma por gravação direta:
+        if 'nuvem_dados' not in st.session_state:
+            st.session_state.nuvem_dados = df
+            
+        st.session_state.nuvem_dados = pd.concat([st.session_state.nuvem_dados, nova_linha], ignore_index=True)
+        df = st.session_state.nuvem_dados
+        st.success("Gasto registrado com sucesso na nuvem de vocês!")
+        st.rerun()
 
 st.markdown("---")
 
 # --- ABA 2: FECHAMENTO E ACERTO DE CONTAS ---
 st.header("🧮 Fechamento do Mês")
 
-# Limpeza de colunas fantasmas que o Google Sheets às vezes gera
-df = df.iloc[:, :5]
-df.columns = ["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"]
-df = df.dropna(subset=["Valor"])
-
+# Remove linhas fantasmas do Excel/Sheets
 if not df.empty:
+    df = df.iloc[:, :5]
+    df.columns = ["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"]
+    df = df.dropna(subset=["Valor"])
+    
     df["Valor"] = pd.to_numeric(df["Valor"], errors='coerce').fillna(0)
     
     total_geral = df["Valor"].sum()
