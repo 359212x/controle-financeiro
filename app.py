@@ -100,4 +100,56 @@ with aba_gerenciamento:
             
         st.markdown("---")
         st.subheader("📋 Planilha de Lançamentos (Clique para Editar ou Excluir)")
-        st
+        st.caption("Dê duplo clique em qualquer célula para alterar. A coluna de Valor aceita qualquer digitação livre (usando vírgula).")
+        
+        # Prepara exibição visual com a vírgula para ficar amigável
+        df_visual = df.copy()
+        df_visual["Valor"] = df_visual["Valor"].map(lambda x: f"{x:.2f}".replace(".", ","))
+        
+        tabela_editada = st.data_editor(
+            df_visual,
+            key="editor_principal_gastos_v4",
+            use_container_width=True,
+            num_rows="dynamic",
+            column_config={
+                "Quem Pagou": st.column_config.SelectboxColumn(options=["Rodrigo", "Aline"]),
+                "Tipo": st.column_config.SelectboxColumn(options=["Fixa", "Eventual"]),
+                "Valor": st.column_config.TextColumn(label="Valor (R$)")
+            }
+        )
+        
+        if st.button("💾 SALVAR ALTERAÇÕES DA TABELA", use_container_width=True, type="primary"):
+            try:
+                lista_linhas = tabela_editada.values.tolist()
+                
+                # Processa os dados limpando a pontuação e convertendo para número puro
+                lista_processada = []
+                for linha in lista_linhas:
+                    data_l, tipo_l, desc_l, val_texto, quem_l = linha
+                    try:
+                        val_limpo = str(val_texto).replace("R$", "").replace(".", "").replace(",", ".").strip()
+                        val_numerico = float(val_limpo)
+                    except ValueError:
+                        val_numerico = 0.0
+                        
+                    lista_processada.append([data_l, tipo_l, desc_l, val_numerico, quem_l])
+                
+                # CORREÇÃO DEFINITIVA: Recria os cabeçalhos manualmente em formato de texto para evitar que o Streamlit quebre a tabela
+                cabecalhos = [["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"]]
+                corpo_tabela = cabecalhos + lista_processada
+                
+                # Descobre o intervalo exato ocupado pela tabela (ex: A1:E15)
+                total_linhas = len(corpo_tabela)
+                intervalo_atualizacao = f"A1:E{total_linhas}"
+                
+                # Limpa os registros antigos e escreve os novos de forma blindada
+                aba.clear()
+                aba.update(range_name=intervalo_atualizacao, values=corpo_tabela)
+                
+                st.success("Alterações salvas permanentemente na nuvem!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro ao salvar alterações: {e}")
+                
+    else:
+        st.info("Nenhum gasto localizado na planilha para este mês.")
