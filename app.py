@@ -49,8 +49,6 @@ with aba_lancamento:
             tipo = st.selectbox("Tipo de Despesa", ["Fixa", "Eventual"], key="novo_tipo")
         with col2:
             pago_por = st.selectbox("Quem pagou?", ["Rodrigo", "Aline"], key="novo_pago")
-            
-            # Campo de entrada principal: Agora aceita número flutuante ou o teclado numérico padrão sem travar centavos
             valor = st.number_input("Valor (R$)", min_value=0.0, step=0.01, format="%.2f", key="novo_valor")
         
         if tipo == "Fixa":
@@ -69,7 +67,7 @@ with aba_lancamento:
             except Exception as erro:
                 st.error(f"Falha ao gravar os dados: {erro}")
 
-# --- ABA 2: FECHAMENTO E EDIÇÃO LIVRE ---
+# --- ABA 2: FECHAMENTO E EDIÇÃO DIRETA ---
 with aba_gerenciamento:
     st.header("🧮 Fechamento e Histórico")
     
@@ -78,7 +76,6 @@ with aba_gerenciamento:
         df.columns = ["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"]
         df = df.dropna(subset=["Valor"])
         
-        # Garante tratamento numérico para a renderização dos cards informativos superiores
         df["Valor"] = pd.to_numeric(df["Valor"], errors='coerce').fillna(0)
         df = df.reset_index(drop=True)
         
@@ -103,55 +100,4 @@ with aba_gerenciamento:
             
         st.markdown("---")
         st.subheader("📋 Planilha de Lançamentos (Clique para Editar ou Excluir)")
-        st.caption("Dê duplo clique em qualquer célula para alterar. Agora a coluna de Valor aceita qualquer digitação livre (use vírgula ou ponto à vontade).")
-        
-        # Converte a coluna Valor temporariamente para formato de texto visível para aceitar digitação livre de pontuação
-        df_visual = df.copy()
-        df_visual["Valor"] = df_visual["Valor"].map(lambda x: f"{x:.2f}".replace(".", ","))
-        
-        # O DATA EDITOR com a coluna Valor configurada como TEXTO LIVRE para impedir bloqueio de digitação do teclado
-        tabela_editada = st.data_editor(
-            df_visual,
-            key="editor_principal_gastos_v2",
-            use_container_width=True,
-            num_rows="dynamic",
-            column_config={
-                "Quem Pagou": st.column_config.SelectboxColumn(options=["Rodrigo", "Aline"]),
-                "Tipo": st.column_config.SelectboxColumn(options=["Fixa", "Eventual"]),
-                "Valor": st.column_config.TextColumn(label="Valor (R$)") # Mudança Crítica: campo de texto livre!
-            }
-        )
-        
-        if st.button("💾 SALVAR ALTERAÇÕES DA TABELA", use_container_width=True, type="primary"):
-            try:
-                # Converte os dados da tabela interativa de volta para o formato de lista
-                lista_linhas = tabela_editada.values.tolist()
-                
-                # Tratamento de dados inteligente: Varre linha por linha limpando e transformando vírgula em ponto
-                lista_processada = []
-                for linha in lista_linhas:
-                    data_l, tipo_l, desc_l, val_texto, quem_l = linha
-                    
-                    # Converte o texto digitado na tabela (ex: "150,50") de volta para número puro (150.50)
-                    try:
-                        val_limpo = str(val_texto).replace("R$", "").replace(".", "").replace(",", ".").strip()
-                        val_numerico = float(val_limpo)
-                    except ValueError:
-                        val_numerico = 0.0
-                        
-                    lista_processada.append([data_l, tipo_l, desc_l, val_numerico, quem_l])
-                
-                cabecalhos = [list(tabela_editada.columns)]
-                corpo_tabela = cabecalhos + lista_processada
-                
-                # Sobrescreve com segurança no Google Sheets
-                aba.clear()
-                aba.update(corpo_tabela)
-                
-                st.success("Alterações gravadas com sucesso no Google Sheets!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Erro ao salvar alterações: {e}")
-                
-    else:
-        st.info("Nenhum gasto localizado na planilha para este mês.")
+        st
