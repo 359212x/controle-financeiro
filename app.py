@@ -101,7 +101,6 @@ with aba_gerenciamento:
         st.markdown("---")
         st.subheader("⚙️ Painel de Modificação e Exclusão")
         
-        # Cria uma lista de opções legível para o usuário escolher qual linha quer mexer
         opcoes_selecao = []
         for idx, linha in df.iterrows():
             opcoes_selecao.append(f"Linha {idx + 2}: {linha['Data']} - {linha['Descrição']} (R$ {linha['Valor']:.2f})")
@@ -109,7 +108,6 @@ with aba_gerenciamento:
         item_escolhido = st.selectbox("Escolha um lançamento para Alterar ou Apagar:", ["-- Selecione um gasto --"] + opcoes_selecao)
         
         if item_escolhido != "-- Selecione um gasto --":
-            # Extrai o número exato da linha física no Google Sheets (ex: "Linha 4" -> 4)
             numero_linha_sheets = int(item_escolhido.split(":")[0].replace("Linha ", ""))
             dados_da_linha = df.iloc[numero_linha_sheets - 2]
             
@@ -117,7 +115,6 @@ with aba_gerenciamento:
             
             with col_btn1:
                 st.markdown("**✏️ Atualizar Dados**")
-                # Formulário isolado: Garante que os valores fiquem guardados em cache até o clique do botão
                 with st.form(key=f"form_edicao_real_{numero_linha_sheets}"):
                     novo_valor_numerico = st.number_input(
                         "Novo Valor (R$)", 
@@ -135,12 +132,35 @@ with aba_gerenciamento:
                     
                     if botao_gravar_alteracao:
                         try:
-                            # Define exatamente as coordenadas das células D (Valor) e E (Quem Pagou)
                             celula_d = f"D{numero_linha_sheets}"
                             celula_e = f"E{numero_linha_sheets}"
                             
-                            # Força a gravação direta na célula do Google Sheets
                             aba.update_acell(celula_d, novo_valor_numerico)
                             aba.update_acell(celula_e, novo_pago_por)
                             
-                            st.success("Alteração salva com
+                            st.success("Alteração salva com sucesso!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao salvar: {e}")
+                            
+            with col_btn2:
+                st.markdown("**🗑️ Excluir Definitivamente**")
+                st.write("Deseja remover este registro da planilha?")
+                botao_deletar_registro = st.button("🔴 APAGAR LANÇAMENTO", use_container_width=True)
+                if botao_deletar_registro:
+                    try:
+                        aba.delete_rows(numero_linha_sheets)
+                        st.success("Registro removido do Google Sheets!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao deletar: {e}")
+
+        st.markdown("---")
+        st.subheader("📋 Todos os Lançamentos do Mês")
+        
+        df_visualizacao = df.copy()
+        df_visualizacao["Valor"] = df_visualizacao["Valor"].map(lambda x: f"R$ {x:,.2f}")
+        st.dataframe(df_visualizacao, use_container_width=True)
+        
+    else:
+        st.info("Nenhum gasto localizado na planilha para este mês.")
