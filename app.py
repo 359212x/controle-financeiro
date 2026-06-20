@@ -50,8 +50,8 @@ with aba_lancamento:
         with col2:
             pago_por = st.selectbox("Quem pagou?", ["Rodrigo", "Aline"], key="novo_pago")
             
-            # CORREÇÃO: Mudamos para text_input com tratamento para aceitar tanto ponto quanto vírgula!
-            valor_texto = st.text_input("Valor (R$)", value="0,00", key="novo_valor_texto")
+            # RETORNO AO PADRÃO ESTÁVEL: Campo numérico puro, aceitando decimais livremente via ponto do teclado
+            valor = st.number_input("Valor (R$)", min_value=0.0, step=0.01, format="%.2f", key="novo_valor")
         
         if tipo == "Fixa":
             descricao = st.selectbox("Selecione a Despesa Fixa", DESPESAS_FIXAS, key="nova_desc_fixa")
@@ -60,23 +60,14 @@ with aba_lancamento:
 
         enviar = st.form_submit_button("Salvar Lançamento")
 
-        if enviar:
+        if enviar and valor > 0:
+            nova_linha = [data.strftime("%d/%m/%Y"), tipo, descricao, valor, pago_por]
             try:
-                # Converte a vírgula digitada pelo usuário em ponto para o banco de dados funcionar internamente
-                valor_limpo = valor_texto.replace("R$", "").replace(".", "").replace(",", ".").strip()
-                valor = float(valor_limpo)
-            except ValueError:
-                st.error("Por favor, digite um valor numérico válido (ex: 150,50)")
-                valor = 0.0
-
-            if valor > 0:
-                nova_linha = [data.strftime("%d/%m/%Y"), tipo, descricao, valor, pago_por]
-                try:
-                    aba.append_row(nova_linha)
-                    st.success(f"Gasto de R$ {valor:,.2f} gravado com sucesso!")
-                    st.rerun()
-                except Exception as erro:
-                    st.error(f"Falha ao gravar os dados: {erro}")
+                aba.append_row(nova_linha)
+                st.success(f"Gasto de R$ {valor:,.2f} gravado com sucesso!")
+                st.rerun()
+            except Exception as erro:
+                st.error(f"Falha ao gravar os dados: {erro}")
 
 # --- ABA 2: FECHAMENTO E EDIÇÃO DIRETA ---
 with aba_gerenciamento:
@@ -109,33 +100,4 @@ with aba_gerenciamento:
             
         st.markdown("---")
         st.subheader("📋 Planilha de Lançamentos (Clique para Editar ou Excluir)")
-        st.caption("Dê duplo clique em qualquer célula para alterar. Na tabela, use o ponto para decimais temporariamente. Selecione a linha e use 'Delete' para excluir.")
-        
-        # O DATA EDITOR com exibição localizada em formato brasileiro (R$)
-        tabela_editada = st.data_editor(
-            df,
-            use_container_width=True,
-            num_rows="dynamic",
-            column_config={
-                "Quem Pagou": st.column_config.SelectboxColumn(options=["Rodrigo", "Aline"]),
-                "Tipo": st.column_config.SelectboxColumn(options=["Fixa", "Eventual"]),
-                "Valor": st.column_config.NumberColumn(format="R$ %.2f") # Mostra formatado bonito na tabela
-            }
-        )
-        
-        if st.button("💾 SALVAR ALTERAÇÕES DA TABELA", use_container_width=True, type="primary"):
-            try:
-                lista_atualizada = tabela_editada.values.tolist()
-                cabecalhos = [list(tabela_editada.columns)]
-                corpo_tabela = cabecalhos + lista_atualizada
-                
-                aba.clear()
-                aba.update(corpo_tabela)
-                
-                st.success("Planilha atualizada com sucesso no Google Sheets!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Erro ao salvar alterações da tabela: {e}")
-                
-    else:
-        st.info("Nenhum gasto localizado na planilha para este mês.")
+        st.caption("Dê duplo clique em qualquer célula para alterar. Na tabela, use o ponto para decimais. Selecione a linha e use 'Delete' para excluir.")
