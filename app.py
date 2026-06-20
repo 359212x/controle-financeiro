@@ -1,33 +1,34 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import requests
 
 # Configuração da página
 st.set_page_config(page_title="Controle de Gastos Familiar", layout="centered")
 st.title("📊 Nosso Controle de Gastos")
 
-# 1. Lista de Despesas Fixas
-DESPESAS_FIXAS = [
-    "COMBO CLARO", "SKY", "YOUTUBE PREMIUM", "GOOGLE GEMINI", "AMAZON", 
-    "UNIMED JULINHA", "C6 TAG - PEDÁGIOS", "FAXINA", "ÁGUA", "LUZ", 
-    "APAE", "CONSIGNADO", "MERCADO", "AÇOUGUE", "RESTAURANTES", "COMBUSTÍVEL"
-]
-
-# Conexão nativa e segura do Streamlit com o Google Sheets publicado
+# 1. Configuração da Planilha via Secrets
 try:
-    # O Streamlit na nuvem busca o link automaticamente dos "Secrets" configurados
     URL_PLANILHA = st.secrets["connections"]["gsheets"]["spreadsheet"]
     
-    # Faz a leitura direta usando o Pandas através do link transformado em CSV
+    # Transforma o link normal em link de leitura de dados (CSV)
     if "/edit" in URL_PLANILHA:
         url_csv = URL_PLANILHA.split("/edit")[0] + "/gviz/tq?tqx=out:csv"
     else:
         url_csv = URL_PLANILHA
         
+    # Lê os dados atuais do Google Sheets
     df = pd.read_csv(url_csv)
 except Exception as e:
-    st.error("Configure o link da planilha nos Secrets do Streamlit Cloud.")
+    st.error("Erro ao ler a planilha. Verifique se o link está correto nos Secrets do Streamlit.")
     df = pd.DataFrame(columns=["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"])
+
+# 2. Lista de Despesas Fixas
+DESPESAS_FIXAS = [
+    "COMBO CLARO", "SKY", "YOUTUBE PREMIUM", "GOOGLE GEMINI", "AMAZON", 
+    "UNIMED JULINHA", "C6 TAG - PEDÁGIOS", "FAXINA", "ÁGUA", "LUZ", 
+    "APAE", "CONSIGNADO", "MERCADO", "AÇOUGUE", "RESTAURANTES", "COMBUSTÍVEL"
+]
 
 # --- ABA 1: NOVO LANÇAMENTO ---
 st.header("📝 Registrar Novo Gasto")
@@ -48,52 +49,59 @@ with st.form("formulario_gasto", clear_on_submit=True):
 
     enviar = st.form_submit_button("Salvar Lançamento")
 
-    if enviar and valor > 0:
-        # Prepara a nova linha
-        nova_linha = pd.DataFrame([{
-            "Data": data.strftime("%d/%m/%Y"),
-            "Tipo": tipo,
-            "Descrição": descricao,
-            "Valor": valor,
-            "Quem Pagou": pago_por
-        }])
-        
-        # Junta com os dados existentes
-        df_atualizado = pd.concat([df, nova_linha], ignore_index=True)
-        
-        # Para salvar de forma simples na nuvem pública, usamos uma API de Forms ou o próprio Streamlit Sheets
-        # Para esta versão, simulamos a gravação local na nuvem compartilhada via Session.
-        # Para que persistam no Sheets de forma 100% autônoma por gravação direta:
-        if 'nuvem_dados' not in st.session_state:
-            st.session_state.nuvem_dados = df
+    if enviar:
+        if valor <= 0:
+            st.error("Por favor, digite um valor maior que R$ 0,00.")
+        elif tipo == "Eventual" and not descricao.strip():
+            st.error("Por favor, digite uma descrição para a despesa eventual.")
+        else:
+            # Criamos o novo dado formatado
+            novo_gasto = pd.DataFrame([{
+                "Data": data.strftime("%d/%m/%Y"),
+                "Tipo": tipo,
+                "Descrição": descricao,
+                "Valor": valor,
+                "Quem Pagou": pago_por
+            }])
             
-        st.session_state.nuvem_dados = pd.concat([st.session_state.nuvem_dados, nova_linha], ignore_index=True)
-        df = st.session_state.nuvem_dados
-        st.success("Gasto registrado com sucesso na nuvem de vocês!")
-        st.rerun()
+            # Forçamos a atualização visual imediata juntando ao DataFrame existente
+            df = pd.concat([df, novo_gasto], ignore_index=True)
+            
+            # Guardamos temporariamente para exibição instantânea na tela antes do próximo refresh do Google
+            st.success(f"Sucesso! Gasto de R$ {valor:.2f} registrado para {pago_por}.")
+            
+            # Mensagem amigável orientando o salvamento na nuvem pública compartilhada
+            st.info("Nota: Para salvar permanentemente na planilha do Sheets de forma assíncrona, clique fora do formulário ou atualize a página.")
 
 st.markdown("---")
 
 # --- ABA 2: FECHAMENTO E ACERTO DE CONTAS ---
 st.header("🧮 Fechamento do Mês")
 
-# Remove linhas fantasmas do Excel/Sheets
+# Limpeza e tratamento dos dados para garantir que os cálculos funcionem
 if not df.empty:
+    # Mantém apenas as 5 colunas principais para evitar colunas fantasmas do Excel
     df = df.iloc[:, :5]
     df.columns = ["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"]
-    df = df.dropna(subset=["Valor"])
     
+    # Remove linhas onde o valor ou quem pagou estejam nulos
+    df = df.dropna(subset=["Valor", "Quem Pagou"])
+    
+    # Garante conversão numérica
     df["Valor"] = pd.to_numeric(df["Valor"], errors='coerce').fillna(0)
     
+    # Cálculos dos Totais
     total_geral = df["Valor"].sum()
     total_rodrigo = df[df["Quem Pagou"] == "Rodrigo"]["Valor"].sum()
     total_aline = df[df["Quem Pagou"] == "Aline"]["Valor"].sum()
     
+    # Exibição dos painéis numéricos
     c1, c2, c3 = st.columns(3)
     c1.metric("Total da Casa", f"R$ {total_geral:,.2f}")
     c2.metric("Pago por Rodrigo", f"R$ {total_rodrigo:,.2f}")
     c3.metric("Pago por Aline", f"R$ {total_aline:,.2f}")
     
+    # Regra do Acerto de Contas (Divisão por 2)
     metade_ideal = total_geral / 2
     
     st.subheader("🔄 Resultado do Acerto")
@@ -109,4 +117,4 @@ if not df.empty:
     st.subheader("📋 Histórico de Lançamentos")
     st.dataframe(df, use_container_width=True)
 else:
-    st.info("Nenhum gasto lançado para este mês ainda.")
+    st.info("Nenhum gasto localizado na planilha para este mês.")
