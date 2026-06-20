@@ -8,12 +8,13 @@ import time
 # --- CONFIGURAÇÃO VISUAL PROFISSIONAL & CLEAN ---
 st.set_page_config(page_title="Controle Financeiro", layout="centered", initial_sidebar_state="collapsed")
 
+# CORREÇÃO SUPREMA DE CONTRASTE: Usamos var(--text-color) para adaptar automaticamente ao tema do aparelho
 st.markdown("""
     <style>
         .block-container { padding-top: 1.5rem; padding-bottom: 2rem; max-width: 550px; }
-        h1 { color: #0F172A; font-weight: 800; font-size: 1.8rem; margin-bottom: 1.5rem; text-align: center; letter-spacing: -0.5px; }
-        h3 { color: #334155; font-weight: 600; font-size: 1.15rem; margin-top: 1.5rem; margin-bottom: 0.6rem; }
-        div[data-testid="stMetricValue"] { font-size: 1.5rem; font-weight: 700; color: #FFFFFF !important; }
+        h1 { font-weight: 800; font-size: 1.8rem; margin-bottom: 1.5rem; text-align: center; letter-spacing: -0.5px; }
+        h3 { font-weight: 600; font-size: 1.15rem; margin-top: 1.5rem; margin-bottom: 0.6rem; }
+        div[data-testid="stMetricValue"] { font-size: 1.5rem; font-weight: 700; color: var(--text-color) !important; }
         .stButton>button { border-radius: 8px; font-weight: 600; height: 3rem; }
         .stForm { border-radius: 12px; border: 1px solid #E2E8F0; padding: 1.5rem; background-color: #F8FAFC; box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
     </style>
@@ -39,7 +40,6 @@ try:
     URL_PLANILHA = st.secrets["connections"]["gsheets"]["spreadsheet"]
     planilha = gc.open_by_url(URL_PLANILHA)
     
-    # Lista todas as abas reais existentes agora
     todas_abas = [w.title for w in planilha.worksheets()]
     todas_abas.sort(reverse=True)
     
@@ -53,7 +53,6 @@ except Exception as e:
 st.markdown("### 📅 Período de Visualização")
 mes_selecionado = st.selectbox("Escolha o mês que deseja consultar ou alterar:", todas_abas)
 
-# CORREÇÃO: Carrega os dados específicos usando .worksheet()
 try:
     aba_atual = planilha.worksheet(mes_selecionado)
     dados_brutos = aba_atual.get_all_values()
@@ -128,7 +127,6 @@ with st.form("novo_gasto_form", clear_on_submit=True):
             
             lista_titulos_reais = [w.title for w in planilha.worksheets()]
             
-            # CORREÇÃO: Usando o método .worksheet() oficial do gspread
             if nome_aba_destino in lista_titulos_reais:
                 aba_destino = planilha.worksheet(nome_aba_destino)
             else:
