@@ -36,7 +36,7 @@ except Exception as e:
     st.error("Erro na conexão segura com o Google Sheets. Verifique as chaves nos Secrets.")
     df = pd.DataFrame(columns=["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"])
 
-# Criação de abas para organizar o aplicativo e não ficar uma tela muito longa no celular
+# Criação de abas para organizar o aplicativo
 aba_lancamento, aba_gerenciamento = st.tabs(["📝 Novo Lançamento", "⚙️ Histórico & Gerenciamento"])
 
 # --- ABA 1: NOVO LANÇAMENTO ---
@@ -63,7 +63,6 @@ with aba_lancamento:
             try:
                 aba.append_row(nova_linha)
                 st.success(f"Gasto de R$ {valor:.2f} gravado com sucesso!")
-                st.hybrid_v2 = True # Força refresh
                 st.rerun()
             except Exception as erro:
                 st.error(f"Falha ao gravar os dados: {erro}")
@@ -73,13 +72,11 @@ with aba_gerenciamento:
     st.header("🧮 Fechamento e Histórico")
     
     if not df.empty:
-        # Tratamento básico dos dados de leitura
         df = df.iloc[:, :5]
         df.columns = ["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"]
         df = df.dropna(subset=["Valor"])
         df["Valor"] = pd.to_numeric(df["Valor"], errors='coerce').fillna(0)
         
-        # Totais e Acerto
         total_geral = df["Valor"].sum()
         total_rodrigo = df[df["Quem Pagou"] == "Rodrigo"]["Valor"].sum()
         total_aline = df[df["Quem Pagou"] == "Aline"]["Valor"].sum()
@@ -101,8 +98,6 @@ with aba_gerenciamento:
         st.markdown("---")
         st.subheader("📋 Gerenciar Registros Lançados")
         
-        # Cria uma lista de opções textuais para selecionar qual linha apagar/editar
-        # O gspread conta as linhas começando de 1, e como a linha 1 são os cabeçalhos, o primeiro dado está na linha 2.
         opcoes_linhas = []
         for index, row in df.iterrows():
             opcoes_linhas.append(f"Linha {index + 2}: {row['Data']} - {row['Descrição']} (R$ {row['Valor']:.2f}) - Por {row['Quem Pagou']}")
@@ -110,7 +105,6 @@ with aba_gerenciamento:
         selecao = st.selectbox("Selecione um registro para Modificar ou Excluir:", ["Nenhum"] + opcoes_linhas)
         
         if selecao != "Nenhum":
-            # Descobre o número real da linha no Google Sheets
             numero_linha_sheets = int(selecao.split(":")[0].replace("Linha ", ""))
             dados_linha_atual = df.iloc[numero_linha_sheets - 2]
             
@@ -123,6 +117,7 @@ with aba_gerenciamento:
                     try:
                         aba.delete_rows(numero_linha_sheets)
                         st.success("Registro deletado com sucesso!")
+                        st.hybrid_v2 = True
                         st.rerun()
                     except Exception as e:
                         st.error(f"Erro ao deletar: {e}")
@@ -136,9 +131,13 @@ with aba_gerenciamento:
                     
                     if botao_atualizar:
                         try:
-                            # Atualiza as células específicas correspondentes no Google Sheets (Colunas D e E)
-                            aba.update_cell(numero_linha_sheets, 4, novo_val) # Coluna 4 = Valor
-                            aba.update_cell(numero_linha_sheets, 5, novo_pago) # Coluna 5 = Quem Pagou
+                            # CORREÇÃO: Usando a nomenclatura de células padrão (ex: D5 e E5) para gravação garantida
+                            celula_valor = f"D{numero_linha_sheets}"
+                            celula_pago = f"E{numero_linha_sheets}"
+                            
+                            aba.update_acell(celula_valor, novo_val)
+                            aba.update_acell(celula_pago, novo_pago)
+                            
                             st.success("Registro atualizado com sucesso!")
                             st.rerun()
                         except Exception as e:
