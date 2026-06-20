@@ -3,11 +3,11 @@ import pandas as pd
 from datetime import datetime
 import gspread
 from google.oauth2.service_account import Credentials
+import time
 
 # --- CONFIGURAÇÃO DE LAYOUT CLEAN ---
 st.set_page_config(page_title="Controle Financeiro", layout="centered", initial_sidebar_state="collapsed")
 
-# Estilização minimalista para um visual profissional e focado
 st.markdown("""
     <style>
         .block-container { padding-top: 1.5rem; padding-bottom: 2rem; max-width: 600px; }
@@ -27,7 +27,7 @@ DESPESAS_FIXAS = [
     "APAE", "CONSIGNADO", "MERCADO", "AÇOUGUE", "RESTAURANTES", "COMBUSTÍVEL"
 ]
 
-# --- CONEXÃO DIRETA SEM CACHE TRAVADO ---
+# --- CONEXÃO DIRETA SEM CACHE ---
 try:
     escopos = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     info_chave = dict(st.secrets["gcp_service_account"])
@@ -51,13 +51,15 @@ except Exception as e:
     df = pd.DataFrame(columns=["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"])
 
 
-# --- FUNÇÃO ATUALIZADORA ---
+# --- FUNÇÃO ATUALIZADORA BLINDADA ---
 def salvar_lista_na_nuvem(lista_dados):
     try:
         aba.clear()
+        time.sleep(0.5) # Pausa técnica para o Google registrar o esvaziamento
         total_l = len(lista_dados)
         aba.update(range_name=f"A1:E{total_l}", values=lista_dados)
         st.success("🔄 Alteração salva com sucesso!")
+        time.sleep(0.5)
         st.rerun()
     except Exception as ex:
         st.error(f"Erro ao salvar: {ex}")
@@ -144,6 +146,7 @@ if not df.empty:
                 lista_nova = []
                 for idx, r in df.iterrows():
                     if idx == idx_selecionado:
+                        # Força explicitamente a conversão do input numérico para float puro
                         lista_nova.append([str(r["Data"]), str(r["Tipo"]), str(r["Descrição"]), float(novo_val), str(novo_quem)])
                     else:
                         lista_nova.append([str(r["Data"]), str(r["Tipo"]), str(r["Descrição"]), float(r["Valor"]), str(r["Quem Pagou"])])
