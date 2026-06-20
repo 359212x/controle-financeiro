@@ -6,7 +6,7 @@ from google.oauth2.service_account import Credentials
 import time
 
 # --- CONFIGURAÇÃO VISUAL PROFISSIONAL & CLEAN ---
-st.set_page_config(page_title="Finanças da Casa", layout="centered", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Controle Financeiro", layout="centered", initial_sidebar_state="collapsed")
 
 st.markdown("""
     <style>
@@ -39,10 +39,8 @@ try:
     URL_PLANILHA = st.secrets["connections"]["gsheets"]["spreadsheet"]
     planilha = gc.open_by_url(URL_PLANILHA)
     
-    # Lista todas as abas existentes para o usuário escolher qual visualizar
+    # Lista todas as abas reais existentes agora
     todas_abas = [w.title for w in planilha.worksheets()]
-    
-    # Organiza a lista para que os meses mais recentes apareçam primeiro no seletor
     todas_abas.sort(reverse=True)
     
 except Exception as e:
@@ -126,24 +124,23 @@ with st.form("novo_gasto_form", clear_on_submit=True):
     
     if botao_inserir and valor_input > 0:
         try:
-            # Descobre o nome da aba alvo com base na data escolhida pelo usuário (Formato: MM-AAAA)
             nome_aba_destino = data_input.strftime("%m-%Y")
             
-            # CRIAÇÃO AUTOMÁTICA: Verifica se a aba já existe, senão cria e bota os cabeçalhos
-            try:
+            # RECONSTRUÇÃO DA LÓGICA DE ABAS: Varre a lista de títulos reais para evitar duplicidade
+            lista_titulos_reais = [w.title for w in planilha.worksheets()]
+            
+            if nome_aba_destino in lista_titulos_reais:
                 aba_destino = planilha.get_worksheet_by_title(nome_aba_destino)
-                if aba_destino is None:
-                    raise gspread.exceptions.WorksheetNotFound
-            except (gspread.exceptions.WorksheetNotFound, Exception):
+            else:
+                # Cria apenas se não existir de verdade na lista de títulos
                 aba_destino = planilha.add_worksheet(title=nome_aba_destino, rows="100", cols="20")
                 aba_destino.append_row(CABECHALHOS)
                 time.sleep(0.5)
             
-            # Grava a linha diretamente na aba correta do mês correspondente
             nova_linha = [data_input.strftime("%d/%m/%Y"), tipo_input, desc_input, float(valor_input), pago_input]
             aba_destino.append_row(nova_linha)
             
-            st.success(f"✅ Adicionado com sucesso na aba {nome_aba_destino}!")
+            st.success(f"✅ Adicionado com sucesso!")
             time.sleep(0.5)
             st.rerun()
         except Exception as err:
