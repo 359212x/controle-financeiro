@@ -49,8 +49,6 @@ with aba_lancamento:
             tipo = st.selectbox("Tipo de Despesa", ["Fixa", "Eventual"], key="novo_tipo")
         with col2:
             pago_por = st.selectbox("Quem pagou?", ["Rodrigo", "Aline"], key="novo_pago")
-            
-            # RETORNO AO PADRÃO ESTÁVEL: Campo numérico puro, aceitando decimais livremente via ponto do teclado
             valor = st.number_input("Valor (R$)", min_value=0.0, step=0.01, format="%.2f", key="novo_valor")
         
         if tipo == "Fixa":
@@ -74,10 +72,14 @@ with aba_gerenciamento:
     st.header("🧮 Fechamento e Histórico")
     
     if not df.empty:
+        # Limpeza profunda e limitação estrita de colunas
         df = df.iloc[:, :5]
         df.columns = ["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"]
         df = df.dropna(subset=["Valor"])
         df["Valor"] = pd.to_numeric(df["Valor"], errors='coerce').fillna(0)
+        
+        # CORREÇÃO CRÍTICA: Reseta o índice e limpa o cache visual do Streamlit para forçar a exibição das linhas
+        df = df.reset_index(drop=True)
         
         # Cálculos e Cards de Resumo
         total_geral = df["Valor"].sum()
@@ -100,4 +102,35 @@ with aba_gerenciamento:
             
         st.markdown("---")
         st.subheader("📋 Planilha de Lançamentos (Clique para Editar ou Excluir)")
-        st.caption("Dê duplo clique em qualquer célula para alterar. Na tabela, use o ponto para decimais. Selecione a linha e use 'Delete' para excluir.")
+        st.caption("Dê duplo clique em qualquer célula para alterar. Use o ponto (.) para os centavos na tabela. Para deletar uma linha inteira, selecione o quadradinho à esquerda dela e aperte a tecla 'Delete' ou o ícone de lixeira.")
+        
+        # Exibição da tabela usando uma chave única (key) estável para evitar sumiço visual
+        tabela_editada = st.data_editor(
+            df,
+            key="editor_principal_gastos",
+            use_container_width=True,
+            num_rows="dynamic",
+            column_config={
+                "Quem Pagou": st.column_config.SelectboxColumn(options=["Rodrigo", "Aline"]),
+                "Tipo": st.column_config.SelectboxColumn(options=["Fixa", "Eventual"]),
+                "Valor": st.column_config.NumberColumn(format="R$ %.2f")
+            }
+        )
+        
+        if st.button("💾 SALVAR ALTERAÇÕES DA TABELA", use_container_width=True, type="primary"):
+            try:
+                lista_atualizada = tabela_editada.values.tolist()
+                cabecalhos = [list(tabela_editada.columns)]
+                corpo_tabela = cabecalhos + lista_atualizada
+                
+                # Atualização limpa no Sheets
+                aba.clear()
+                aba.update(corpo_tabela)
+                
+                st.success("Planilha atualizada com sucesso no Google Sheets!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro ao salvar alterações: {e}")
+                
+    else:
+        st.info("Nenhum gasto localizado na planilha para este mês.")
