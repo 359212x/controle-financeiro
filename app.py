@@ -8,12 +8,11 @@ import time
 # --- CONFIGURAÇÃO VISUAL PROFISSIONAL & CLEAN ---
 st.set_page_config(page_title="Finanças da Casa", layout="centered", initial_sidebar_state="collapsed")
 
-# CORREÇÃO DE COR: Forçamos o valor das métricas (stMetricValue) para branco (#FFFFFF)
 st.markdown("""
     <style>
         .block-container { padding-top: 1.5rem; padding-bottom: 2rem; max-width: 550px; }
-        h1 { font-weight: 800; font-size: 1.8rem; margin-bottom: 1.5rem; text-align: center; letter-spacing: -0.5px; }
-        h3 { font-weight: 600; font-size: 1.15rem; margin-top: 1.5rem; margin-bottom: 0.6rem; }
+        h1 { color: #0F172A; font-weight: 800; font-size: 1.8rem; margin-bottom: 1.5rem; text-align: center; letter-spacing: -0.5px; }
+        h3 { color: #334155; font-weight: 600; font-size: 1.15rem; margin-top: 1.5rem; margin-bottom: 0.6rem; }
         div[data-testid="stMetricValue"] { font-size: 1.5rem; font-weight: 700; color: #FFFFFF !important; }
         .stButton>button { border-radius: 8px; font-weight: 600; height: 3rem; }
         .stForm { border-radius: 12px; border: 1px solid #E2E8F0; padding: 1.5rem; background-color: #F8FAFC; box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
@@ -28,7 +27,9 @@ DESPESAS_FIXAS = [
     "APAE", "CONSIGNADO", "MERCADO", "AÇOUGUE", "RESTAURANTES", "COMBUSTÍVEL"
 ]
 
-# --- CONEXÃO DIRETA E RESILIENTE ---
+CABECHALHOS = ["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"]
+
+# --- CONEXÃO DIRETA COM O GOOGLE SHEETS ---
 try:
     escopos = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     info_chave = dict(st.secrets["gcp_service_account"])
@@ -37,9 +38,27 @@ try:
     
     URL_PLANILHA = st.secrets["connections"]["gsheets"]["spreadsheet"]
     planilha = gc.open_by_url(URL_PLANILHA)
-    aba = planilha.get_worksheet(0)
     
-    dados_brutos = aba.get_all_values()
+    # Lista todas as abas existentes para o usuário escolher qual visualizar
+    todas_abas = [w.title for w in planilha.worksheets()]
+    
+    # Organiza a lista para que os meses mais recentes apareçam primeiro no seletor
+    todas_abas.sort(reverse=True)
+    
+except Exception as e:
+    st.error(f"⚠️ Falha de sincronização com o Sheets: {e}")
+    todas_abas = [datetime.now().strftime("%m-%Y")]
+
+# ==========================================
+# SEÇÃO DE SELEÇÃO DO MÊS DE CONSULTA
+# ==========================================
+st.markdown("### 📅 Período de Visualização")
+mes_selecionado = st.selectbox("Escolha o mês que deseja consultar ou alterar:", todas_abas)
+
+# Carrega os dados específicos da aba selecionada
+try:
+    aba_atual = planilha.get_worksheet_by_title(mes_selecionado)
+    dados_brutos = aba_atual.get_all_values()
     
     if len(dados_brutos) > 1:
         linhas = []
@@ -57,18 +76,18 @@ try:
         df = pd.DataFrame(linhas)
     else:
         df = pd.DataFrame(columns=["LinhaPlanilha", "Data", "Tipo", "Descrição", "Valor", "Quem Pagou"])
-except Exception as e:
-    st.error(f"⚠️ Falha de sincronização com o Sheets: {e}")
+except Exception:
     df = pd.DataFrame(columns=["LinhaPlanilha", "Data", "Tipo", "Descrição", "Valor", "Quem Pagou"])
 
 
 # ==========================================
-# SEÇÃO 1: PAINEL DE RESUMO (KPIs)
+# SEÇÃO 1: PAINEL DE RESUMO (MÊS SELECIONADO)
 # ==========================================
 total_geral = df["Valor"].sum() if not df.empty else 0.0
 total_rodrigo = df[df["Quem Pagou"] == "Rodrigo"]["Valor"].sum() if not df.empty else 0.0
 total_aline = df[df["Quem Pagou"] == "Aline"]["Valor"].sum() if not df.empty else 0.0
 
+st.write(f"**Resumo Financeiro — Competência {mes_selecionado}**")
 with st.container():
     c1, c2, c3 = st.columns(3)
     c1.metric("Total da Casa", f"R$ {total_geral:,.2f}")
@@ -107,10 +126,25 @@ with st.form("novo_gasto_form", clear_on_submit=True):
     
     if botao_inserir and valor_input > 0:
         try:
+            # Descobre o nome da aba alvo com base na data escolhida pelo usuário (Formato: MM-AAAA)
+            nome_aba_destino = data_input.strftime("%m-%Y")
+            
+            # CRIAÇÃO AUTOMÁTICA: Verifica se a aba já existe, senão cria e bota os cabeçalhos
+            try:
+                aba_destino = planilha.get_worksheet_by_title(nome_aba_destino)
+                if aba_destino is None:
+                    raise gspread.exceptions.WorksheetNotFound
+            except (gspread.exceptions.WorksheetNotFound, Exception):
+                aba_destino = planilha.add_worksheet(title=nome_aba_destino, rows="100", cols="20")
+                aba_destino.append_row(CABECHALHOS)
+                time.sleep(0.5)
+            
+            # Grava a linha diretamente na aba correta do mês correspondente
             nova_linha = [data_input.strftime("%d/%m/%Y"), tipo_input, desc_input, float(valor_input), pago_input]
-            aba.append_row(nova_linha)
-            st.success("✅ Adicionado com sucesso!")
-            time.sleep(0.4)
+            aba_destino.append_row(nova_linha)
+            
+            st.success(f"✅ Adicionado com sucesso na aba {nome_aba_destino}!")
+            time.sleep(0.5)
             st.rerun()
         except Exception as err:
             st.error(f"Erro ao inserir: {err}")
@@ -120,7 +154,7 @@ st.markdown("---")
 # ==========================================
 # SEÇÃO 3: HISTÓRICO, EDIÇÃO & EXCLUSÃO
 # ==========================================
-st.subheader("📋 Histórico & Alterações")
+st.subheader(f"📋 Lançamentos de {mes_selecionado}")
 
 if not df.empty:
     df_visual = df.copy()
@@ -134,7 +168,7 @@ if not df.empty:
     }
     
     linha_selecionada = st.selectbox(
-        "Selecione um item para Modificar ou Excluir:", 
+        "Selecione um item caso queira Alterar ou Excluir:", 
         options=list(opcoes_gastos.keys()), 
         format_func=lambda x: opcoes_gastos[x]
     )
@@ -151,8 +185,8 @@ if not df.empty:
             if st.button("💾 Gravar Correção", use_container_width=True):
                 try:
                     num_linha = int(gasto_selecionado["LinhaPlanilha"])
-                    aba.update_cell(num_linha, 4, float(novo_valor))
-                    aba.update_cell(num_linha, 5, str(novo_pagador))
+                    aba_atual.update_cell(num_linha, 4, float(novo_valor))
+                    aba_atual.update_cell(num_linha, 5, str(novo_pagador))
                     st.success("🔄 Registro corrigido e salvo no Sheets!")
                     time.sleep(0.5)
                     st.rerun()
@@ -160,16 +194,16 @@ if not df.empty:
                     st.error(f"Falha ao editar célula: {ex_edit}")
                     
         with col_ed2:
-            st.write("Excluir definitivamente:")
+            st.write("Ação irreversível:")
             st.write("")
             if st.button("🗑️ Deletar Lançamento", use_container_width=True, type="secondary"):
                 try:
                     num_linha = int(gasto_selecionado["LinhaPlanilha"])
-                    aba.delete_rows(num_linha)
+                    aba_atual.delete_rows(num_linha)
                     st.success("🗑️ Item removido da planilha!")
                     time.sleep(0.5)
                     st.rerun()
                 except Exception as ex_del:
                     st.error(f"Falha ao deletar: {ex_del}")
 else:
-    st.info("Nenhum lançamento localizado nesta planilha.")
+    st.info(f"Nenhum lançamento localizado na aba {mes_selecionado}.")
