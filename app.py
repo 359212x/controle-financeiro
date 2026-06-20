@@ -20,7 +20,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("📊 Nosso Controle de Gastos")
+st.title("📊 Controle de Gastos")
 
 DESPESAS_FIXAS = [
     "COMBO CLARO", "SKY", "YOUTUBE PREMIUM", "GOOGLE GEMINI", "AMAZON", 
@@ -141,4 +141,35 @@ if not df.empty:
     
     gasto_selecionado = df[df["LinhaPlanilha"] == linha_selecionada].iloc[0]
     
-    with st.expander("🛠️ Editar ou Remover o Item Selecionado
+    with st.expander("🛠️ Editar ou Remover o Item Selecionado", expanded=False):
+        col_ed1, col_ed2 = st.columns(2)
+        
+        with col_ed1:
+            novo_valor = st.number_input("Corrigir Valor (R$)", value=float(gasto_selecionado["Valor"]), step=0.01, format="%.2f", key="edit_val")
+            novo_pagador = st.selectbox("Corrigir Quem Pagou", ["Rodrigo", "Aline"], index=["Rodrigo", "Aline"].index(gasto_selecionado["Quem Pagou"]), key="edit_quem")
+            
+            if st.button("💾 Gravar Correção", use_container_width=True):
+                try:
+                    num_linha = int(gasto_selecionado["LinhaPlanilha"])
+                    aba.update_cell(num_linha, 4, float(novo_valor))
+                    aba.update_cell(num_linha, 5, str(novo_pagador))
+                    st.success("🔄 Registro corrigido e salvo no Sheets!")
+                    time.sleep(0.5)
+                    st.rerun()
+                except Exception as ex_edit:
+                    st.error(f"Falha ao editar célula: {ex_edit}")
+                    
+        with col_ed2:
+            st.write("Excluir definitivamente:")
+            st.write("")
+            if st.button("🗑️ Deletar Lançamento", use_container_width=True, type="secondary"):
+                try:
+                    num_linha = int(gasto_selecionado["LinhaPlanilha"])
+                    aba.delete_rows(num_linha)
+                    st.success("🗑️ Item removido da planilha!")
+                    time.sleep(0.5)
+                    st.rerun()
+                except Exception as ex_del:
+                    st.error(f"Falha ao deletar: {ex_del}")
+else:
+    st.info("Nenhum lançamento localizado nesta planilha.")
