@@ -146,4 +146,20 @@ if not df.empty:
                     if idx == idx_selecionado:
                         lista_nova.append([str(r["Data"]), str(r["Tipo"]), str(r["Descrição"]), float(novo_val), str(novo_quem)])
                     else:
-                        lista_nova.append([str(r["Data"]), str(r["Tipo"]), str(r["Descrição"]), float(r
+                        lista_nova.append([str(r["Data"]), str(r["Tipo"]), str(r["Descrição"]), float(r["Valor"]), str(r["Quem Pagou"])])
+                
+                salvar_lista_na_nuvem(cabecalhos + lista_nova)
+        
+        with col_ed2:
+            st.write("Ação irreversível:")
+            st.write("")
+            if st.button("🗑️ Deletar Lançamento", use_container_width=True, type="secondary"):
+                cabecalhos = [["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"]]
+                lista_nova = []
+                for idx, r in df.iterrows():
+                    if idx != idx_selecionado:
+                        lista_nova.append([str(r["Data"]), str(r["Tipo"]), str(r["Descrição"]), float(r["Valor"]), str(r["Quem Pagou"])])
+                
+                salvar_lista_na_nuvem(cabecalhos + lista_nova)
+else:
+    st.info("Nenhum lançamento localizado para este mês.")
