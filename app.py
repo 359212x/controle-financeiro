@@ -53,15 +53,12 @@ def carregar_dados_sheets():
 
 aba, df = carregar_dados_sheets()
 
-# --- FUNÇÃO ATUALIZADORA (PANDAS -> NUVEM) ---
-def salvar_df_na_nuvem(df_para_salvar):
+# --- FUNÇÃO ATUALIZADORA REFEITA (BLINDADA CONTRA ERROS DE TIPO) ---
+def salvar_lista_na_nuvem(lista_dados):
     try:
         aba.clear()
-        lista_dados = [["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"]]
-        for _, r in df_para_salvar.iterrows():
-            lista_dados.append([str(r["Data"]), str(r["Tipo"]), str(r["Descrição"]), float(r["Valor"]), str(r["Quem Pagou"])])
-        
-        aba.update(range_name=f"A1:E{len(lista_dados)}", values=lista_dados)
+        total_l = len(lista_dados)
+        aba.update(range_name=f"A1:E{total_l}", values=lista_dados)
         st.cache_data.clear()
         st.success("🔄 Alteração salva e sincronizada na nuvem!")
         st.rerun()
@@ -75,14 +72,12 @@ total_geral = df["Valor"].sum() if not df.empty else 0.0
 total_rodrigo = df[df["Quem Pagou"] == "Rodrigo"]["Valor"].sum() if not df.empty else 0.0
 total_aline = df[df["Quem Pagou"] == "Aline"]["Valor"].sum() if not df.empty else 0.0
 
-# Cards elegantes de resumo de despesas
 with st.container():
     c1, c2, c3 = st.columns(3)
     c1.metric("Total da Casa", f"R$ {total_geral:,.2f}")
     c2.metric("Rodrigo", f"R$ {total_rodrigo:,.2f}")
     c3.metric("Aline", f"R$ {total_aline:,.2f}")
     
-    # Caixa informativa clean sobre o Pix de acerto
     metade = total_geral / 2
     if total_rodrigo > total_aline:
         st.info(f"💡 **Aline** transfere **R$ {total_rodrigo - metade:,.2f}** para Rodrigo.")
@@ -109,20 +104,20 @@ with st.form("novo_gasto_form", clear_on_submit=True):
     if tipo == "Fixa":
         descricao = st.selectbox("Selecione a Despesa Fixa", DESPESAS_FIXAS)
     else:
-        descricao = st.text_input("Descrição do Gasto Eventual", placeholder="Ex: Farmácia, Mercado...")
+        descricao = st.text_input("Descrição do Gasto Eventual", placeholder="Ex: Farmácia...")
         
     botao_inserir = st.form_submit_button("Salvar Lançamento", use_container_width=True, type="primary")
     
     if botao_inserir and valor > 0:
-        novo_registro = pd.DataFrame([{
-            "Data": data.strftime("%d/%m/%Y"),
-            "Tipo": tipo,
-            "Descrição": descricao,
-            "Valor": valor,
-            "Quem Pagou": pago_por
-        }])
-        df_atualizado = pd.concat([df, novo_registro], ignore_index=True)
-        salvar_df_na_nuvem(df_atualizado)
+        # Prepara os dados novos para envio em formato padrão de lista
+        cabecalhos = [["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"]]
+        lista_atual = []
+        for _, r in df.iterrows():
+            lista_atual.append([str(r["Data"]), str(r["Tipo"]), str(r["Descrição"]), float(r["Valor"]), str(r["Quem Pagou"])])
+        
+        # Adiciona o novo
+        lista_atual.append([data.strftime("%d/%m/%Y"), tipo, descricao, float(valor), pago_por])
+        salvar_lista_na_nuvem(cabecalhos + lista_atual)
 
 st.markdown("---")
 
@@ -132,35 +127,18 @@ st.markdown("---")
 st.subheader("📋 Histórico de Lançamentos")
 
 if not df.empty:
-    # Exibição limpa da lista atual
     df_view = df.copy()
     df_view["Valor"] = df_view["Valor"].map(lambda x: f"R$ {x:,.2f}")
     st.dataframe(df_view, use_container_width=True, height=240)
     
-    # Gerenciador direto e focado
     st.write("")
     opcoes = {i: f"Item {i+1}: {row['Descrição']} — R$ {row['Valor']:.2f} ({row['Quem Pagou']})" for i, row in df.iterrows()}
     idx_selecionado = st.selectbox("Selecione um item caso queira Alterar ou Excluir:", options=list(opcoes.keys()), format_func=lambda x: opcoes[x])
     
     gasto_focado = df.iloc[idx_selecionado]
     
-    # Janela sanfonada limpa para manipulação do item selecionado
     with st.expander("🛠️ Painel de Ajuste do Item Selecionado", expanded=False):
         col_ed1, col_ed2 = st.columns(2)
         with col_ed1:
             novo_val = st.number_input("Corrigir Valor", value=float(gasto_focado["Valor"]), step=0.01, format="%.2f", key="ed_val_input")
-            novo_quem = st.selectbox("Corrigir Quem Pagou", ["Rodrigo", "Aline"], index=["Rodrigo", "Aline"].index(gasto_focado["Quem Pagou"]), key="ed_quem_input")
-            
-            if st.button("💾 Gravar Correção", use_container_width=True):
-                df.at[idx_selecionado, "Valor"] = novo_val
-                df.at[idx_selecionado, "Quem Pagou"] = novo_quem
-                salvar_df_na_nuvem(df)
-        
-        with col_ed2:
-            st.write("Ação irreversível:")
-            st.write("")
-            if st.button("🗑️ Deletar Lançamento", use_container_width=True, type="secondary"):
-                df_novo = df.drop(idx_selecionado).reset_index(drop=True)
-                salvar_df_na_nuvem(df_novo)
-else:
-    st.info("Nenhum lançamento localizado para este mês.")
+            novo_quem = st.selectbox("Corrigir Quem Pagou", ["Rodrigo", "Aline"], index=["Rodrigo", "Aline"].index(gasto_focado
