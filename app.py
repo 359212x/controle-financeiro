@@ -37,7 +37,7 @@ except Exception as e:
     df = pd.DataFrame(columns=["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"])
 
 # Criação de abas para organizar o aplicativo
-aba_lancamento, aba_gerenciamento = st.tabs(["📝 Novo Lançamento", "⚙️ Histórico & Gerenciamento"])
+aba_lancamento, aba_gerenciamento = st.tabs(["📝 Novo Lançamento", "⚙️ Histórico & Fechamento"])
 
 # --- ABA 1: NOVO LANÇAMENTO ---
 with aba_lancamento:
@@ -67,16 +67,18 @@ with aba_lancamento:
             except Exception as erro:
                 st.error(f"Falha ao gravar os dados: {erro}")
 
-# --- ABA 2: FECHAMENTO, EDIÇÃO E EXCLUSÃO ---
+# --- ABA 2: FECHAMENTO E EDIÇÃO DIRETA ---
 with aba_gerenciamento:
     st.header("🧮 Fechamento e Histórico")
     
     if not df.empty:
+        # Tratamento e limpeza padrão
         df = df.iloc[:, :5]
         df.columns = ["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"]
         df = df.dropna(subset=["Valor"])
         df["Valor"] = pd.to_numeric(df["Valor"], errors='coerce').fillna(0)
         
+        # Cálculos e Cards de Resumo
         total_geral = df["Valor"].sum()
         total_rodrigo = df[df["Quem Pagou"] == "Rodrigo"]["Valor"].sum()
         total_aline = df[df["Quem Pagou"] == "Aline"]["Valor"].sum()
@@ -96,56 +98,37 @@ with aba_gerenciamento:
             st.success("Contas equilibradas!")
             
         st.markdown("---")
-        st.subheader("📋 Gerenciar Registros Lançados")
+        st.subheader("📋 Planilha de Lançamentos (Clique para Editar ou Excluir)")
+        st.caption("Dê duplo clique em qualquer célula para alterar o valor, texto ou nome. Para deletar uma linha completa, selecione-a marcando a caixinha à esquerda e aperte a tecla 'Delete' do seu teclado (ou use o ícone de lixeira que aparece).")
         
-        opcoes_linhas = []
-        for index, row in df.iterrows():
-            opcoes_linhas.append(f"Linha {index + 2}: {row['Data']} - {row['Descrição']} (R$ {row['Valor']:.2f}) - Por {row['Quem Pagou']}")
-            
-        selecao = st.selectbox("Selecione um registro para Modificar ou Excluir:", ["Nenhum"] + opcoes_linhas)
+        # O DATA EDITOR transforma a tabela em uma planilha editável diretamente na tela!
+        tabela_editada = st.data_editor(
+            df,
+            use_container_width=True,
+            num_rows="dynamic", # Permite que o usuário também delete linhas marcando a caixinha
+            column_config={
+                "Quem Pagou": st.column_config.SelectboxColumn(options=["Rodrigo", "Aline"]),
+                "Tipo": st.column_config.SelectboxColumn(options=["Fixa", "Eventual"]),
+                "Valor": st.column_config.NumberColumn(format="R$ %.2f")
+            }
+        )
         
-        if selecao != "Nenhum":
-            numero_linha_sheets = int(selecao.split(":")[0].replace("Linha ", ""))
-            dados_linha_atual = df.iloc[numero_linha_sheets - 2]
-            
-            col_ed1, col_ed2 = st.columns(2)
-            
-            with col_ed1:
-                st.write("🗑️ **Zona de Exclusão**")
-                botao_deletar = st.button("🔴 APAGAR REGISTRO DEFINITIVAMENTE", use_container_width=True)
-                if botao_deletar:
-                    try:
-                        aba.delete_rows(numero_linha_sheets)
-                        st.success("Registro deletado com sucesso!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao deletar: {e}")
-                        
-            with col_ed2:
-                st.write("✏️ **Zona de Edição**")
+        # Botão para salvar todas as alterações feitas na tabela de uma vez só
+        if st.button("💾 SALVAR ALTERAÇÕES DA TABELA", use_container_width=True, type="primary"):
+            try:
+                # Converte a tabela editada de volta para o formato de lista do Sheets
+                lista_atualizada = tabela_editada.values.tolist()
+                cabecalhos = [list(tabela_editada.columns)]
+                corpo_tabela = cabecalhos + lista_atualizada
                 
-                # CORREÇÃO CRÍTICA: Usando st.form para travar os dados editados e impedir que o refresh limpe o input antes do clique
-                with st.form("form_edicao", clear_on_submit=False):
-                    novo_val = st.number_input("Alterar Valor (R$)", value=float(dados_linha_atual["Valor"]), step=5.0)
-                    novo_pago = st.selectbox("Alterar Quem Pagou", ["Rodrigo", "Aline"], index=["Rodrigo", "Aline"].index(dados_linha_atual["Quem Pagou"]))
-                    botao_atualizar = st.form_submit_button("🟢 Salvar Alterações", use_container_width=True)
-                    
-                    if botao_atualizar:
-                        try:
-                            # Envia as alterações diretamente em lote para evitar problemas de sincronia
-                            celula_valor = f"D{numero_linha_sheets}"
-                            celula_pago = f"E{numero_linha_sheets}"
-                            
-                            aba.update_acell(celula_valor, novo_val)
-                            aba.update_acell(celula_pago, novo_pago)
-                            
-                            st.success("Registro atualizado com sucesso no Google Sheets!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Erro ao atualizar: {e}")
-
-        st.markdown("---")
-        st.write("**Visualização Completa da Tabela:**")
-        st.dataframe(df, use_container_width=True)
+                # Limpa a planilha antiga e grava a nova por cima em uma única operação limpa
+                aba.clear()
+                aba.update(corpo_tabela)
+                
+                st.success("Planilha atualizada com sucesso no Google Sheets!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro ao salvar alterações da tabela: {e}")
+                
     else:
         st.info("Nenhum gasto localizado na planilha para este mês.")
