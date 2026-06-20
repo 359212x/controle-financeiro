@@ -53,9 +53,9 @@ except Exception as e:
 st.markdown("### 📅 Período de Visualização")
 mes_selecionado = st.selectbox("Escolha o mês que deseja consultar ou alterar:", todas_abas)
 
-# Carrega os dados específicos da aba selecionada
+# CORREÇÃO: Carrega os dados específicos usando .worksheet()
 try:
-    aba_atual = planilha.get_worksheet_by_title(mes_selecionado)
+    aba_atual = planilha.worksheet(mes_selecionado)
     dados_brutos = aba_atual.get_all_values()
     
     if len(dados_brutos) > 1:
@@ -126,13 +126,12 @@ with st.form("novo_gasto_form", clear_on_submit=True):
         try:
             nome_aba_destino = data_input.strftime("%m-%Y")
             
-            # RECONSTRUÇÃO DA LÓGICA DE ABAS: Varre a lista de títulos reais para evitar duplicidade
             lista_titulos_reais = [w.title for w in planilha.worksheets()]
             
+            # CORREÇÃO: Usando o método .worksheet() oficial do gspread
             if nome_aba_destino in lista_titulos_reais:
-                aba_destino = planilha.get_worksheet_by_title(nome_aba_destino)
+                aba_destino = planilha.worksheet(nome_aba_destino)
             else:
-                # Cria apenas se não existir de verdade na lista de títulos
                 aba_destino = planilha.add_worksheet(title=nome_aba_destino, rows="100", cols="20")
                 aba_destino.append_row(CABECHALHOS)
                 time.sleep(0.5)
