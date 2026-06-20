@@ -27,43 +27,41 @@ DESPESAS_FIXAS = [
     "APAE", "CONSIGNADO", "MERCADO", "AÇOUGUE", "RESTAURANTES", "COMBUSTÍVEL"
 ]
 
-# --- CONEXÃO COM A PLANILHA (COM CACHE CONTROLADO) ---
-@st.cache_data(ttl=5)
-def carregar_dados_sheets():
-    try:
-        escopos = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        info_chave = dict(st.secrets["gcp_service_account"])
-        credenciais = Credentials.from_service_account_info(info_chave, scopes=escopos)
-        gc = gspread.authorize(credenciais)
-        
-        URL_PLANILHA = st.secrets["connections"]["gsheets"]["spreadsheet"]
-        planilha = gc.open_by_url(URL_PLANILHA)
-        aba = planilha.get_worksheet(0)
-        
-        dados = aba.get_all_records()
-        if dados:
-            df_local = pd.DataFrame(dados).iloc[:, :5]
-            df_local.columns = ["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"]
-            df_local["Valor"] = pd.to_numeric(df_local["Valor"], errors='coerce').fillna(0.0)
-            return aba, df_local.reset_index(drop=True)
-        return aba, pd.DataFrame(columns=["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"])
-    except Exception as e:
-        st.error(f"Erro de conexão: {e}")
-        return None, pd.DataFrame(columns=["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"])
+# --- CONEXÃO DIRETA SEM CACHE TRAVADO ---
+try:
+    escopos = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+    info_chave = dict(st.secrets["gcp_service_account"])
+    credenciais = Credentials.from_service_account_info(info_chave, scopes=escopos)
+    gc = gspread.authorize(credenciais)
+    
+    URL_PLANILHA = st.secrets["connections"]["gsheets"]["spreadsheet"]
+    planilha = gc.open_by_url(URL_PLANILHA)
+    aba = planilha.get_worksheet(0)
+    
+    dados = aba.get_all_records()
+    if dados:
+        df = pd.DataFrame(dados).iloc[:, :5]
+        df.columns = ["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"]
+        df["Valor"] = pd.to_numeric(df["Valor"], errors='coerce').fillna(0.0)
+        df = df.reset_index(drop=True)
+    else:
+        df = pd.DataFrame(columns=["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"])
+except Exception as e:
+    st.error(f"⚠️ Erro de conexão com o Google Sheets: {e}")
+    df = pd.DataFrame(columns=["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"])
 
-aba, df = carregar_dados_sheets()
 
-# --- FUNÇÃO ATUALIZADORA REFEITA (BLINDADA CONTRA ERROS DE TIPO) ---
+# --- FUNÇÃO ATUALIZADORA ---
 def salvar_lista_na_nuvem(lista_dados):
     try:
         aba.clear()
         total_l = len(lista_dados)
         aba.update(range_name=f"A1:E{total_l}", values=lista_dados)
-        st.cache_data.clear()
-        st.success("🔄 Alteração salva e sincronizada na nuvem!")
+        st.success("🔄 Alteração salva com sucesso!")
         st.rerun()
     except Exception as ex:
         st.error(f"Erro ao salvar: {ex}")
+
 
 # ==========================================
 # SEÇÃO 1: RESUMO FINANCEIRO & FECHAMENTO
@@ -89,4 +87,63 @@ with st.container():
 st.markdown("---")
 
 # ==========================================
-# SEÇÃO
+# SEÇÃO 2: ADICIONAR NOVO GASTO
+# ==========================================
+st.subheader("📝 Novo Lançamento")
+with st.form("novo_gasto_form", clear_on_submit=True):
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        data = st.date_input("Data", datetime.now())
+        tipo = st.selectbox("Tipo", ["Fixa", "Eventual"])
+    with col_f2:
+        valor = st.number_input("Valor (R$)", min_value=0.0, step=0.01, format="%.2f")
+        pago_por = st.selectbox("Quem pagou?", ["Rodrigo", "Aline"])
+    
+    if tipo == "Fixa":
+        descricao = st.selectbox("Selecione a Despesa Fixa", DESPESAS_FIXAS)
+    else:
+        descricao = st.text_input("Descrição do Gasto Eventual", placeholder="Ex: Farmácia...")
+        
+    botao_inserir = st.form_submit_button("Salvar Lançamento", use_container_width=True, type="primary")
+    
+    if botao_inserir and valor > 0:
+        cabecalhos = [["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"]]
+        lista_atual = []
+        for _, r in df.iterrows():
+            lista_atual.append([str(r["Data"]), str(r["Tipo"]), str(r["Descrição"]), float(r["Valor"]), str(r["Quem Pagou"])])
+        
+        lista_atual.append([data.strftime("%d/%m/%Y"), tipo, descricao, float(valor), pago_por])
+        salvar_lista_na_nuvem(cabecalhos + lista_atual)
+
+st.markdown("---")
+
+# ==========================================
+# SEÇÃO 3: HISTÓRICO & MODIFICAÇÃO
+# ==========================================
+st.subheader("📋 Histórico de Lançamentos")
+
+if not df.empty:
+    df_view = df.copy()
+    df_view["Valor"] = df_view["Valor"].map(lambda x: f"R$ {x:,.2f}")
+    st.dataframe(df_view, use_container_width=True, height=240)
+    
+    st.write("")
+    opcoes = {i: f"Item {i+1}: {row['Descrição']} — R$ {row['Valor']:.2f} ({row['Quem Pagou']})" for i, row in df.iterrows()}
+    idx_selecionado = st.selectbox("Selecione um item caso queira Alterar ou Excluir:", options=list(opcoes.keys()), format_func=lambda x: opcoes[x])
+    
+    gasto_focado = df.iloc[idx_selecionado]
+    
+    with st.expander("🛠️ Painel de Ajuste do Item Selecionado", expanded=False):
+        col_ed1, col_ed2 = st.columns(2)
+        with col_ed1:
+            novo_val = st.number_input("Corrigir Valor", value=float(gasto_focado["Valor"]), step=0.01, format="%.2f", key="ed_val_input")
+            novo_quem = st.selectbox("Corrigir Quem Pagou", ["Rodrigo", "Aline"], index=["Rodrigo", "Aline"].index(gasto_focado["Quem Pagou"]), key="ed_quem_input")
+            
+            if st.button("💾 Gravar Correção", use_container_width=True):
+                cabecalhos = [["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"]]
+                lista_nova = []
+                for idx, r in df.iterrows():
+                    if idx == idx_selecionado:
+                        lista_nova.append([str(r["Data"]), str(r["Tipo"]), str(r["Descrição"]), float(novo_val), str(novo_quem)])
+                    else:
+                        lista_nova.append([str(r["Data"]), str(r["Tipo"]), str(r["Descrição"]), float(r
