@@ -67,7 +67,7 @@ with aba_lancamento:
             except Exception as erro:
                 st.error(f"Falha ao gravar os dados: {erro}")
 
-# --- ABA 2: FECHAMENTO E EDIÇÃO DIRETA ---
+# --- ABA 2: FECHAMENTO, ALTERAÇÃO E EXCLUSÃO SÓLIDA ---
 with aba_gerenciamento:
     st.header("🧮 Fechamento e Histórico")
     
@@ -99,55 +99,48 @@ with aba_gerenciamento:
             st.success("Contas equilibradas!")
             
         st.markdown("---")
-        st.subheader("📋 Planilha de Lançamentos (Clique para Editar ou Excluir)")
-        st.warning("⚠️ **Aviso de uso:** Após alterar um valor, clique fora da célula editada (ou aperte Enter) antes de clicar no botão salvar abaixo.")
+        st.subheader("⚙️ Painel de Modificação e Exclusão")
         
-        # Prepara exibição visual amigável
-        df_visual = df.copy()
-        df_visual["Valor"] = df_visual["Valor"].map(lambda x: f"{x:.2f}".replace(".", ","))
+        # Cria uma lista de opções legível para o usuário escolher qual linha quer mexer
+        opcoes_selecao = []
+        for idx, linha in df.iterrows():
+            opcoes_selecao.append(f"Linha {idx + 2}: {linha['Data']} - {linha['Descrição']} (R$ {linha['Valor']:.2f})")
+            
+        item_escolhido = st.selectbox("Escolha um lançamento para Alterar ou Apagar:", ["-- Selecione um gasto --"] + opcoes_selecao)
         
-        tabela_editada = st.data_editor(
-            df_visual,
-            key="editor_principal_gastos_v5",
-            use_container_width=True,
-            num_rows="dynamic",
-            column_config={
-                "Quem Pagou": st.column_config.SelectboxColumn(options=["Rodrigo", "Aline"]),
-                "Tipo": st.column_config.SelectboxColumn(options=["Fixa", "Eventual"]),
-                "Valor": st.column_config.TextColumn(label="Valor (R$)")
-            }
-        )
-        
-        # Guardamos as alterações pendentes usando o Session State para evitar perda de sincronia
-        if st.button("💾 SALVAR ALTERAÇÕES DA TABELA", use_container_width=True, type="primary"):
-            try:
-                # Captura o estado atual exato do componente na tela
-                lista_linhas = tabela_editada.values.tolist()
-                
-                lista_processada = []
-                for linha in lista_linhas:
-                    data_l, tipo_l, desc_l, val_texto, quem_l = linha
-                    try:
-                        val_limpo = str(val_texto).replace("R$", "").replace(".", "").replace(",", ".").strip()
-                        val_numerico = float(val_limpo)
-                    except ValueError:
-                        val_numerico = 0.0
-                        
-                    lista_processada.append([data_l, tipo_l, desc_l, val_numerico, quem_l])
-                
-                cabecalhos = [["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"]]
-                corpo_tabela = cabecalhos + lista_processada
-                
-                total_linhas = len(corpo_tabela)
-                intervalo_atualizacao = f"A1:E{total_linhas}"
-                
-                aba.clear()
-                aba.update(range_name=intervalo_atualizacao, values=corpo_tabela)
-                
-                st.success("Alterações salvas permanentemente!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Erro ao salvar alterações: {e}")
-                
-    else:
-        st.info("Nenhum gasto localizado na planilha para este mês.")
+        if item_escolhido != "-- Selecione um gasto --":
+            # Extrai o número exato da linha física no Google Sheets (ex: "Linha 4" -> 4)
+            numero_linha_sheets = int(item_escolhido.split(":")[0].replace("Linha ", ""))
+            dados_da_linha = df.iloc[numero_linha_sheets - 2]
+            
+            col_btn1, col_btn2 = st.columns(2)
+            
+            with col_btn1:
+                st.markdown("**✏️ Atualizar Dados**")
+                # Formulário isolado: Garante que os valores fiquem guardados em cache até o clique do botão
+                with st.form(key=f"form_edicao_real_{numero_linha_sheets}"):
+                    novo_valor_numerico = st.number_input(
+                        "Novo Valor (R$)", 
+                        value=float(dados_da_linha["Valor"]), 
+                        step=0.01, 
+                        format="%.2f"
+                    )
+                    novo_pago_por = st.selectbox(
+                        "Alterar Quem Pagou", 
+                        ["Rodrigo", "Aline"], 
+                        index=["Rodrigo", "Aline"].index(dados_da_linha["Quem Pagou"])
+                    )
+                    
+                    botao_gravar_alteracao = st.form_submit_button("💾 Confirmar e Gravar Alteração", use_container_width=True)
+                    
+                    if botao_gravar_alteracao:
+                        try:
+                            # Define exatamente as coordenadas das células D (Valor) e E (Quem Pagou)
+                            celula_d = f"D{numero_linha_sheets}"
+                            celula_e = f"E{numero_linha_sheets}"
+                            
+                            # Força a gravação direta na célula do Google Sheets
+                            aba.update_acell(celula_d, novo_valor_numerico)
+                            aba.update_acell(celula_e, novo_pago_por)
+                            
+                            st.success("Alteração salva com
