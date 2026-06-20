@@ -49,7 +49,9 @@ with aba_lancamento:
             tipo = st.selectbox("Tipo de Despesa", ["Fixa", "Eventual"], key="novo_tipo")
         with col2:
             pago_por = st.selectbox("Quem pagou?", ["Rodrigo", "Aline"], key="novo_pago")
-            valor = st.number_input("Valor (R$)", min_value=0.0, step=10.0, format="%.2f", key="novo_valor")
+            
+            # CORREÇÃO: Mudamos para text_input com tratamento para aceitar tanto ponto quanto vírgula!
+            valor_texto = st.text_input("Valor (R$)", value="0,00", key="novo_valor_texto")
         
         if tipo == "Fixa":
             descricao = st.selectbox("Selecione a Despesa Fixa", DESPESAS_FIXAS, key="nova_desc_fixa")
@@ -58,21 +60,29 @@ with aba_lancamento:
 
         enviar = st.form_submit_button("Salvar Lançamento")
 
-        if enviar and valor > 0:
-            nova_linha = [data.strftime("%d/%m/%Y"), tipo, descricao, valor, pago_por]
+        if enviar:
             try:
-                aba.append_row(nova_linha)
-                st.success(f"Gasto de R$ {valor:.2f} gravado com sucesso!")
-                st.rerun()
-            except Exception as erro:
-                st.error(f"Falha ao gravar os dados: {erro}")
+                # Converte a vírgula digitada pelo usuário em ponto para o banco de dados funcionar internamente
+                valor_limpo = valor_texto.replace("R$", "").replace(".", "").replace(",", ".").strip()
+                valor = float(valor_limpo)
+            except ValueError:
+                st.error("Por favor, digite um valor numérico válido (ex: 150,50)")
+                valor = 0.0
+
+            if valor > 0:
+                nova_linha = [data.strftime("%d/%m/%Y"), tipo, descricao, valor, pago_por]
+                try:
+                    aba.append_row(nova_linha)
+                    st.success(f"Gasto de R$ {valor:,.2f} gravado com sucesso!")
+                    st.rerun()
+                except Exception as erro:
+                    st.error(f"Falha ao gravar os dados: {erro}")
 
 # --- ABA 2: FECHAMENTO E EDIÇÃO DIRETA ---
 with aba_gerenciamento:
     st.header("🧮 Fechamento e Histórico")
     
     if not df.empty:
-        # Tratamento e limpeza padrão
         df = df.iloc[:, :5]
         df.columns = ["Data", "Tipo", "Descrição", "Valor", "Quem Pagou"]
         df = df.dropna(subset=["Valor"])
@@ -99,29 +109,26 @@ with aba_gerenciamento:
             
         st.markdown("---")
         st.subheader("📋 Planilha de Lançamentos (Clique para Editar ou Excluir)")
-        st.caption("Dê duplo clique em qualquer célula para alterar o valor, texto ou nome. Para deletar uma linha completa, selecione-a marcando a caixinha à esquerda e aperte a tecla 'Delete' do seu teclado (ou use o ícone de lixeira que aparece).")
+        st.caption("Dê duplo clique em qualquer célula para alterar. Na tabela, use o ponto para decimais temporariamente. Selecione a linha e use 'Delete' para excluir.")
         
-        # O DATA EDITOR transforma a tabela em uma planilha editável diretamente na tela!
+        # O DATA EDITOR com exibição localizada em formato brasileiro (R$)
         tabela_editada = st.data_editor(
             df,
             use_container_width=True,
-            num_rows="dynamic", # Permite que o usuário também delete linhas marcando a caixinha
+            num_rows="dynamic",
             column_config={
                 "Quem Pagou": st.column_config.SelectboxColumn(options=["Rodrigo", "Aline"]),
                 "Tipo": st.column_config.SelectboxColumn(options=["Fixa", "Eventual"]),
-                "Valor": st.column_config.NumberColumn(format="R$ %.2f")
+                "Valor": st.column_config.NumberColumn(format="R$ %.2f") # Mostra formatado bonito na tabela
             }
         )
         
-        # Botão para salvar todas as alterações feitas na tabela de uma vez só
         if st.button("💾 SALVAR ALTERAÇÕES DA TABELA", use_container_width=True, type="primary"):
             try:
-                # Converte a tabela editada de volta para o formato de lista do Sheets
                 lista_atualizada = tabela_editada.values.tolist()
                 cabecalhos = [list(tabela_editada.columns)]
                 corpo_tabela = cabecalhos + lista_atualizada
                 
-                # Limpa a planilha antiga e grava a nova por cima em uma única operação limpa
                 aba.clear()
                 aba.update(corpo_tabela)
                 
