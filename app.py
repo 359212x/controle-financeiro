@@ -8,12 +8,13 @@ import time
 # --- CONFIGURAÇÃO VISUAL PROFISSIONAL & CLEAN ---
 st.set_page_config(page_title="Finanças da Casa", layout="centered", initial_sidebar_state="collapsed")
 
+# CORREÇÃO DE COR: Forçamos o valor das métricas (stMetricValue) para branco (#FFFFFF)
 st.markdown("""
     <style>
         .block-container { padding-top: 1.5rem; padding-bottom: 2rem; max-width: 550px; }
-        h1 { color: #0F172A; font-weight: 800; font-size: 1.8rem; margin-bottom: 1.5rem; text-align: center; letter-spacing: -0.5px; }
-        h3 { color: #334155; font-weight: 600; font-size: 1.15rem; margin-top: 1.5rem; margin-bottom: 0.6rem; }
-        div[data-testid="stMetricValue"] { font-size: 1.5rem; font-weight: 700; color: #0F172A; }
+        h1 { font-weight: 800; font-size: 1.8rem; margin-bottom: 1.5rem; text-align: center; letter-spacing: -0.5px; }
+        h3 { font-weight: 600; font-size: 1.15rem; margin-top: 1.5rem; margin-bottom: 0.6rem; }
+        div[data-testid="stMetricValue"] { font-size: 1.5rem; font-weight: 700; color: #FFFFFF !important; }
         .stButton>button { border-radius: 8px; font-weight: 600; height: 3rem; }
         .stForm { border-radius: 12px; border: 1px solid #E2E8F0; padding: 1.5rem; background-color: #F8FAFC; box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
     </style>
@@ -38,18 +39,15 @@ try:
     planilha = gc.open_by_url(URL_PLANILHA)
     aba = planilha.get_worksheet(0)
     
-    # Baixa os dados brutos mantendo a numeração da linha do Sheets
     dados_brutos = aba.get_all_values()
     
     if len(dados_brutos) > 1:
-        # Monta o DataFrame guardando o número real da linha (index original + 2)
         linhas = []
         for i, r in enumerate(dados_brutos[1:]):
-            # Preenche colunas vazias caso falte alguma coisa na planilha
             while len(r) < 5:
                 r.append("")
             linhas.append({
-                "LinhaPlanilha": i + 2, # Linha 1 são os cabeçalhos
+                "LinhaPlanilha": i + 2,
                 "Data": str(r[0]),
                 "Tipo": str(r[1]),
                 "Descrição": str(r[2]),
@@ -125,13 +123,11 @@ st.markdown("---")
 st.subheader("📋 Histórico & Alterações")
 
 if not df.empty:
-    # Exibição visual limpa da tabela
     df_visual = df.copy()
     df_visual["Valor"] = df_visual["Valor"].map(lambda x: f"R$ {x:,.2f}")
     st.dataframe(df_visual.drop(columns=["LinhaPlanilha"]), use_container_width=True, height=220)
     
     st.write("")
-    # Menu seletor indexado de forma amigável
     opcoes_gastos = {
         row["LinhaPlanilha"]: f"Linha {idx+1}: {row['Descrição']} — R$ {row['Valor']:.2f} ({row['Quem Pagou']})" 
         for idx, row in df.iterrows()
@@ -143,39 +139,6 @@ if not df.empty:
         format_func=lambda x: opcoes_gastos[x]
     )
     
-    gasto_selecionado = df[df["LinhaPlanilha"] == row_to_edit if 'row_to_edit' in locals() else df["LinhaPlanilha"] == linha_selecionada].iloc[0]
+    gasto_selecionado = df[df["LinhaPlanilha"] == linha_selecionada].iloc[0]
     
-    # Painel expander minimalista para alteração rápida
-    with st.expander("🛠️ Editar ou Remover o Item Selecionado", expanded=False):
-        col_ed1, col_ed2 = st.columns(2)
-        
-        with col_ed1:
-            novo_valor = st.number_input("Corrigir Valor (R$)", value=float(gasto_selecionado["Valor"]), step=0.01, format="%.2f", key="edit_val")
-            novo_pagador = st.selectbox("Corrigir Quem Pagou", ["Rodrigo", "Aline"], index=["Rodrigo", "Aline"].index(gasto_selecionado["Quem Pagou"]), key="edit_quem")
-            
-            if st.button("💾 Gravar Correção", use_container_width=True):
-                try:
-                    # ATUALIZAÇÃO CIRÚRGICA: Modifica diretamente a célula daquela linha na Nuvem
-                    num_linha = int(gasto_selecionado["LinhaPlanilha"])
-                    aba.update_cell(num_linha, 4, float(novo_valor))     # Coluna D: Valor
-                    aba.update_cell(num_linha, 5, str(novo_pagador))     # Coluna E: Quem Pagou
-                    st.success("🔄 Registro corrigido e salvo no Sheets!")
-                    time.sleep(0.5)
-                    st.rerun()
-                except Exception as ex_edit:
-                    st.error(f"Falha ao editar célula: {ex_edit}")
-                    
-        with col_ed2:
-            st.write("Excluir definitivamente:")
-            st.write("")
-            if st.button("🗑️ Deletar Lançamento", use_container_width=True, type="secondary"):
-                try:
-                    num_linha = int(gasto_selecionado["LinhaPlanilha"])
-                    aba.delete_rows(num_linha)
-                    st.success("🗑️ Item removido da planilha!")
-                    time.sleep(0.5)
-                    st.rerun()
-                except Exception as ex_del:
-                    st.error(f"Falha ao deletar: {ex_del}")
-else:
-    st.info("Nenhum lançamento localizado nesta planilha.")
+    with st.expander("🛠️ Editar ou Remover o Item Selecionado
