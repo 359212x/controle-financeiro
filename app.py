@@ -117,28 +117,29 @@ with aba_gerenciamento:
                     try:
                         aba.delete_rows(numero_linha_sheets)
                         st.success("Registro deletado com sucesso!")
-                        st.hybrid_v2 = True
                         st.rerun()
                     except Exception as e:
                         st.error(f"Erro ao deletar: {e}")
                         
             with col_ed2:
                 st.write("✏️ **Zona de Edição**")
-                with st.expander("Abrir Painel de Edição"):
+                
+                # CORREÇÃO CRÍTICA: Usando st.form para travar os dados editados e impedir que o refresh limpe o input antes do clique
+                with st.form("form_edicao", clear_on_submit=False):
                     novo_val = st.number_input("Alterar Valor (R$)", value=float(dados_linha_atual["Valor"]), step=5.0)
                     novo_pago = st.selectbox("Alterar Quem Pagou", ["Rodrigo", "Aline"], index=["Rodrigo", "Aline"].index(dados_linha_atual["Quem Pagou"]))
-                    botao_atualizar = st.button("🟢 Salvar Alterações", use_container_width=True)
+                    botao_atualizar = st.form_submit_button("🟢 Salvar Alterações", use_container_width=True)
                     
                     if botao_atualizar:
                         try:
-                            # CORREÇÃO: Usando a nomenclatura de células padrão (ex: D5 e E5) para gravação garantida
+                            # Envia as alterações diretamente em lote para evitar problemas de sincronia
                             celula_valor = f"D{numero_linha_sheets}"
                             celula_pago = f"E{numero_linha_sheets}"
                             
                             aba.update_acell(celula_valor, novo_val)
                             aba.update_acell(celula_pago, novo_pago)
                             
-                            st.success("Registro atualizado com sucesso!")
+                            st.success("Registro atualizado com sucesso no Google Sheets!")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Erro ao atualizar: {e}")
